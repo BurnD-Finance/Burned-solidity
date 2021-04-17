@@ -1,23 +1,19 @@
 // SPDX-License-Identifier: MIT
-
 pragma solidity ^0.8.0;
+
 
 interface ILottery {
     function addToLottery(address account) external;
 
     function removeFromLottery(address account) external;
 
-    function isEligible(address account) external view returns (bool);
-
-    function getArray() external view returns (address[] memory);
+    function setMaxPrizePool(uint256 _maxPrizePool) external;
 
     function lottery() external;
 
-    function getEthPrice() external view returns (int256);
+    function isEligible(address account) external view returns (bool);
 
-    function getCakePrice() external view returns (int256);
-
-    function getBnbPrice() external view returns (int256);
+    function getWinners() external view returns (address[] memory);
 
     function getContractBalance() external view returns (uint256);
 
@@ -26,7 +22,7 @@ interface ILottery {
      *
      * Note that `value` cannot be zero.
      */
-    event Lottery(address indexed winner, uint256 value);
+    event Lottery(address indexed winner, uint256 value, uint256 timestamp);
 
     /**
      * @dev Emitted when `account` is added
