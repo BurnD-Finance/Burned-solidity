@@ -5,8 +5,8 @@ pragma solidity ^0.8.0;
 import "hardhat/console.sol";
 import "./IERC20.sol";
 import "../access/Ownable.sol";
-import "../loterry/ILottery.sol";
 import "../loterry/Lottery.sol";
+import "../loterry/ILottery.sol";
 
 /**
  * @dev Implementation of the {IERC20} interface.
@@ -37,6 +37,8 @@ contract ERC20 is Ownable, IERC20 {
 
     mapping(address => mapping(address => uint256)) private _allowances;
 
+    mapping(address => bool) private _isExcluded;
+
     uint256 private _totalSupply;
 
     string private _name;
@@ -63,6 +65,9 @@ contract ERC20 is Ownable, IERC20 {
         _name = name_;
         _symbol = symbol_;
         lotteryContract = new Lottery(address(this));
+        _isExcluded[address(this)] = true;
+        _isExcluded[address(lotteryContract)] = true;
+        _isExcluded[owner()] = true;
     }
 
     /**
@@ -278,19 +283,31 @@ contract ERC20 is Ownable, IERC20 {
         );
         _balances[sender] = senderBalance - amount;
         _balances[recipient] += amount;
-        _burn(recipient, _calculatePercentageOfAmount(burnFee, amount));
 
-        uint256 lotteryAmount =
-            _calculatePercentageOfAmount(lotteryFee, amount);
-        _balances[recipient] -= lotteryAmount;
-        _balances[address(lotteryContract)] += lotteryAmount;
-
-        _setLotteryEligibility(sender);
-        _setLotteryEligibility(recipient);
-
-        ILottery(lotteryContract).lottery();
+        _payFees(sender, recipient, amount);
 
         emit Transfer(sender, recipient, amount);
+    }
+
+    function _payFees(
+        address sender,
+        address recipient,
+        uint256 amount
+    ) internal {
+        uint256 lotteryAmount =
+            _calculatePercentageOfAmount(lotteryFee, amount);
+
+        if (!_isExcluded[sender]) {
+            _setLotteryEligibility(sender);
+        }
+
+        if (!_isExcluded[recipient]) {
+            _balances[recipient] -= lotteryAmount;
+            _setLotteryEligibility(recipient);
+            _balances[address(lotteryContract)] += lotteryAmount;
+            _burn(recipient, _calculatePercentageOfAmount(burnFee, amount));
+        }
+        lotteryContract.lottery();
     }
 
     /** @dev Creates `amount` tokens and assigns them to `account`, increasing
