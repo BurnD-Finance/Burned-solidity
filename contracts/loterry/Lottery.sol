@@ -1,76 +1,23 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.3;
 
 import "hardhat/console.sol";
+import "./Randomize.sol";
 import "./ILottery.sol";
+import "./IRandomize.sol";
 import "../token/IERC20.sol";
-import "../interfaces/AggregatorV3Interface.sol";
+
 
 contract Lottery is ILottery {
-    address[] private eligibleForLottery;
+    address[] private winners;
 
-    AggregatorV3Interface internal ethPriceFeed =
-        AggregatorV3Interface(0x72AFAECF99C9d9C8215fF44C77B94B99C28741e8);
-    AggregatorV3Interface internal bnbPriceFeed =
-        AggregatorV3Interface(0xc546d2d06144F9DD42815b8bA46Ee7B8FcAFa4a2);
-    AggregatorV3Interface internal cakePriceFeed =
-        AggregatorV3Interface(0xF4030086522a5bEEa4988F8cA5B36dbC97BeE88c);
+    address[] internal eligibleForLottery;
 
     address private immutable BurnDContract;
+    IRandomize private RandomizeContract;
 
-    uint maxPrizePool;
-
-    /**
-     * Returns the latest price
-     * Network: Kovan
-     * Aggregator: ETH/USD
-     * Address: 0x9326BFA02ADD2366b30bacB125260Af641031331
-     */
-    function getEthPrice() public view override returns (int256) {
-        (
-            uint80 roundID,
-            int256 price,
-            uint256 startedAt,
-            uint256 timeStamp,
-            uint80 answeredInRound
-        ) = ethPriceFeed.latestRoundData();
-        return price;
-    }
-
-    /**
-     * Returns the latest price
-     * Network: Kovan
-     * Aggregator: ETH/USD
-     * Address: 0x9326BFA02ADD2366b30bacB125260Af641031331
-     */
-    function getCakePrice() public view override returns (int256) {
-        (
-            uint80 roundID,
-            int256 price,
-            uint256 startedAt,
-            uint256 timeStamp,
-            uint80 answeredInRound
-        ) = cakePriceFeed.latestRoundData();
-        return price;
-    }
-
-    /**
-     * Returns the latest price
-     * Network: Kovan
-     * Aggregator: ETH/USD
-     * Address: 0x9326BFA02ADD2366b30bacB125260Af641031331
-     */
-    function getBnbPrice() public view override returns (int256) {
-        (
-            uint80 roundID,
-            int256 price,
-            uint256 startedAt,
-            uint256 timeStamp,
-            uint80 answeredInRound
-        ) = bnbPriceFeed.latestRoundData();
-        return price;
-    }
+    uint256 maxPrizePool;
 
     modifier onlyBurnD {
         require(
@@ -83,25 +30,30 @@ contract Lottery is ILottery {
     constructor(address BurnDContract_) {
         BurnDContract = BurnDContract_;
         maxPrizePool = 5000 * 1E18;
+        RandomizeContract = new Randomize();
+    }
+
+    function setMaxPrizePool(uint256 _maxPrizePool) external override {
+        maxPrizePool = _maxPrizePool;
     }
 
     function lottery() external override {
         uint256 contractBalance = getContractBalance();
         if (getContractBalance() > maxPrizePool) {
             uint256 index =
-                uint256(
-                    keccak256(
-                        abi.encodePacked(
-                            block.difficulty,
-                            block.timestamp,
-                            eligibleForLottery.length
-                        )
-                    )
-                ) % eligibleForLottery.length;
+                IRandomize(RandomizeContract).randomize(
+                    eligibleForLottery.length
+                );
             if (eligibleForLottery[index] != address(0)) {
                 IERC20(BurnDContract).transfer(
                     eligibleForLottery[index],
                     contractBalance
+                );
+                winners.push(eligibleForLottery[index]);
+                emit Lottery(
+                    eligibleForLottery[index],
+                    contractBalance,
+                    block.timestamp
                 );
             }
         }
@@ -153,7 +105,7 @@ contract Lottery is ILottery {
         return false;
     }
 
-    function getArray() external view override returns (address[] memory) {
-        return eligibleForLottery;
+    function getWinners() external view override returns (address[] memory) {
+        return winners;
     }
 }
