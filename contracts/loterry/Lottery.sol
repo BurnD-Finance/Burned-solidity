@@ -10,7 +10,6 @@ import "../token/IERC20.sol";
 import "../access/Ownable.sol";
 
 contract Lottery is ILottery, Ownable {
-
     address[] private winners;
 
     address[] internal eligibleForLottery;
@@ -34,13 +33,24 @@ contract Lottery is ILottery, Ownable {
         randomizeContract = new Randomize();
     }
 
-    function setNewRandomizeContract(address _randomizeContract) external override onlyOwner {
+    function setNewRandomizeContract(address _randomizeContract)
+        external
+        override
+        onlyOwner
+    {
         address oldRandomizeAddress;
         randomizeContract = IRandomize(_randomizeContract);
-        emit UpdateRandomizeContract(oldRandomizeAddress, address(_randomizeContract));
+        emit UpdateRandomizeContract(
+            oldRandomizeAddress,
+            address(_randomizeContract)
+        );
     }
 
-    function setMaxPrizePool(uint256 _maxPrizePool) external override onlyOwner {
+    function setMaxPrizePool(uint256 _maxPrizePool)
+        external
+        override
+        onlyOwner
+    {
         maxPrizePool = _maxPrizePool;
     }
 
@@ -112,5 +122,4 @@ contract Lottery is ILottery, Ownable {
         }
         revert("Lottery: Account not present in the list");
     }
-
 }

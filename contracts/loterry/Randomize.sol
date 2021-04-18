@@ -5,7 +5,6 @@ import "./IRandomize.sol";
 import "../interfaces/AggregatorV3Interface.sol";
 
 contract Randomize is IRandomize {
-
     //BSC ETH:USD = 0x9ef1B8c0E4F7dc8bF5719Ea496883DC6401d5b2e
     AggregatorV3Interface internal ethPriceFeed =
         AggregatorV3Interface(0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419);
@@ -64,9 +63,9 @@ contract Randomize is IRandomize {
                     block.timestamp,
                     length
 
-//                    getBnbPrice(),
-//                    getCakePrice(),
-//                    getEthPrice()
+                    //                    getBnbPrice(),
+                    //                    getCakePrice(),
+                    //                    getEthPrice()
                 )
             )
         ) % length);

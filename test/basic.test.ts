@@ -1,6 +1,5 @@
 import { ethers } from "hardhat";
 import {
-  ILottery__factory,
   Lottery, Lottery__factory,
   Token,
   Token__factory,
@@ -237,7 +236,6 @@ describe("BurnD", () => {
       parseEther( "80000")
     );
     expect(await token.balanceOf(await accounts[8].getAddress())).to.eq(parseEther('76800'));
-
   });
 
   it("should return the new balance (989 200 BURND) after tokens has been burnt", async() => {
@@ -258,7 +256,6 @@ describe("BurnD", () => {
       parseEther( "90000")
     );
     expect(await token.balanceOf(await accounts[9].getAddress())).to.eq(parseEther('86400'));
-
   });
 
   it("should return the new balance (986 500 BURND) after tokens has been burnt", async() => {
