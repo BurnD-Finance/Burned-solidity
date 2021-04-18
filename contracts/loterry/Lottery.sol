@@ -7,15 +7,15 @@ import "./Randomize.sol";
 import "./ILottery.sol";
 import "./IRandomize.sol";
 import "../token/IERC20.sol";
+import "../access/Ownable.sol";
 
-
-contract Lottery is ILottery {
+contract Lottery is ILottery, Ownable {
     address[] private winners;
 
     address[] internal eligibleForLottery;
 
     address private immutable BurnDContract;
-    IRandomize private RandomizeContract;
+    IRandomize private randomizeContract;
 
     uint256 maxPrizePool;
 
@@ -30,29 +30,43 @@ contract Lottery is ILottery {
     constructor(address BurnDContract_) {
         BurnDContract = BurnDContract_;
         maxPrizePool = 5000 * 1E18;
-        RandomizeContract = new Randomize();
+        randomizeContract = new Randomize();
     }
 
-    function setMaxPrizePool(uint256 _maxPrizePool) external override {
+    function setNewRandomizeContract(address _randomizeContract)
+        external
+        override
+        onlyOwner
+    {
+        address oldRandomizeAddress;
+        randomizeContract = IRandomize(_randomizeContract);
+        emit UpdateRandomizeContract(
+            oldRandomizeAddress,
+            address(_randomizeContract)
+        );
+    }
+
+    function setMaxPrizePool(uint256 _maxPrizePool)
+        external
+        override
+        onlyOwner
+    {
         maxPrizePool = _maxPrizePool;
     }
 
-    function lottery() external override {
-        uint256 contractBalance = getContractBalance();
-        if (getContractBalance() > maxPrizePool) {
-            uint256 index =
-                IRandomize(RandomizeContract).randomize(
-                    eligibleForLottery.length
-                );
+    function lottery() external override onlyBurnD {
+        if (getContractBalance() >= maxPrizePool) {
+            uint256 length = eligibleForLottery.length;
+            uint256 index = randomizeContract.randomize(length);
             if (eligibleForLottery[index] != address(0)) {
                 IERC20(BurnDContract).transfer(
                     eligibleForLottery[index],
-                    contractBalance
+                    maxPrizePool
                 );
                 winners.push(eligibleForLottery[index]);
                 emit Lottery(
                     eligibleForLottery[index],
-                    contractBalance,
+                    maxPrizePool,
                     block.timestamp
                 );
             }
@@ -72,27 +86,12 @@ contract Lottery is ILottery {
         }
     }
 
+    function getWinners() external view override returns (address[] memory) {
+        return winners;
+    }
+
     function getContractBalance() public view override returns (uint256) {
         return IERC20(BurnDContract).balanceOf(address(this));
-    }
-
-    function _getAccountIndex(address account) internal view returns (uint256) {
-        uint256 length = eligibleForLottery.length;
-        for (uint256 i = 0; i < length; i++) {
-            if (eligibleForLottery[i] == account) {
-                return i;
-            }
-        }
-        revert("Lottery: Account not present in the list");
-    }
-
-    function _removeFromEligibility(uint256 index) internal {
-        uint256 length = eligibleForLottery.length;
-
-        for (uint256 i = index; i < length - 1; i++) {
-            eligibleForLottery[i] = eligibleForLottery[i + 1];
-        }
-        eligibleForLottery.pop();
     }
 
     function isEligible(address account) public view override returns (bool) {
@@ -105,7 +104,22 @@ contract Lottery is ILottery {
         return false;
     }
 
-    function getWinners() external view override returns (address[] memory) {
-        return winners;
+    function _removeFromEligibility(uint256 index) internal {
+        uint256 length = eligibleForLottery.length;
+
+        for (uint256 i = index; i < length - 1; i++) {
+            eligibleForLottery[i] = eligibleForLottery[i + 1];
+        }
+        eligibleForLottery.pop();
+    }
+
+    function _getAccountIndex(address account) internal view returns (uint256) {
+        uint256 length = eligibleForLottery.length;
+        for (uint256 i = 0; i < length; i++) {
+            if (eligibleForLottery[i] == account) {
+                return i;
+            }
+        }
+        revert("Lottery: Account not present in the list");
     }
 }

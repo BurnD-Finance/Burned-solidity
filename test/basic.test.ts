@@ -1,14 +1,13 @@
 import { ethers } from "hardhat";
 import {
-  ILottery__factory,
-  Lottery,
+  Lottery, Lottery__factory,
   Token,
   Token__factory,
 } from "../typechain";
 import { Signer } from "ethers";
 import { expect } from "chai";
 import { expectRevert } from "@openzeppelin/test-helpers";
-import {formatUnits, parseEther} from "ethers/lib/utils";
+import {formatUnits, isAddress, parseEther} from "ethers/lib/utils";
 
 describe("BurnD", () => {
   let token: Token;
@@ -28,7 +27,8 @@ describe("BurnD", () => {
     await token.deployed();
 
     // The contract is deployed by Token; Connect to Lottery;
-    lottery = ILottery__factory.connect(
+
+    lottery = Lottery__factory.connect(
       await token.lotteryContract(),
       deployer
     );
@@ -236,7 +236,6 @@ describe("BurnD", () => {
       parseEther( "80000")
     );
     expect(await token.balanceOf(await accounts[8].getAddress())).to.eq(parseEther('76800'));
-
   });
 
   it("should return the new balance (989 200 BURND) after tokens has been burnt", async() => {
@@ -257,7 +256,6 @@ describe("BurnD", () => {
       parseEther( "90000")
     );
     expect(await token.balanceOf(await accounts[9].getAddress())).to.eq(parseEther('86400'));
-
   });
 
   it("should return the new balance (986 500 BURND) after tokens has been burnt", async() => {
@@ -277,11 +275,15 @@ describe("BurnD", () => {
       await accounts[10].getAddress(),
       parseEther( "100000")
     );
-    expect(await token.balanceOf(await accounts[10].getAddress())).to.eq(parseEther('96000'));
+    if((await lottery.getWinners())[0] == await accounts[10].getAddress()){
+      expect(await token.balanceOf(await accounts[10].getAddress())).to.eq(parseEther('108000'));
+    } else {
+      expect(await token.balanceOf(await accounts[10].getAddress())).to.eq(parseEther('96000'));
+    }
   });
 
   it("should return the new balance (983 500 BURND) after tokens has been burnt", async() => {
-    expect(await token.totalSupply()).to.equal(parseEther('983500'));
+    expect(await token.totalSupply()).to.equal(parseEther('983350'));
   });
 
   it("should be eligible to lottery with user10", async () => {
@@ -289,47 +291,53 @@ describe("BurnD", () => {
   });
 
   it("should transfer from user10 to user11", async () => {
-    expect(await getAccountEligibility(accounts[10])).to.be.true;
-
     await token
       .connect(accounts[10])
       .transfer(
         await accounts[11].getAddress(),
         await token.balanceOf(await accounts[10].getAddress())
       );
-    console.log(
-      (await token.balanceOf(await accounts[10].getAddress())).toString()
-    );
-    console.log(
-      (await token.balanceOf(await accounts[11].getAddress())).toString()
-    );
-    console.log((await token.totalSupply()).toString());
-    console.log(await accounts[10].getAddress());
-    console.log(await getAccountEligibility(accounts[10]));
+
+    expect(await token.balanceOf(await accounts[10].getAddress())).to.eq(parseEther('0'));
+    expect(await token.balanceOf(await accounts[11].getAddress())).to.eq(parseEther('92160'));
+  });
+
+  it("should lose eligibility to lottery with user10", async () => {
+    expect(await getAccountEligibility(accounts[10])).to.be.false;
+  });
+
+  it("should return the new balance (980 470 BURND) after tokens has been burnt", async() => {
+    expect(await token.totalSupply()).to.equal(parseEther('980470'));
+  });
+
+  it("should be eligibility to lottery with user5", async () => {
+    expect(await getAccountEligibility(accounts[5])).to.be.true;
   });
 
   it("should transfer from user5 to user11", async () => {
-    expect(await getAccountEligibility(accounts[5])).to.be.true;
-
     await token
       .connect(accounts[5])
       .transfer(
         await accounts[11].getAddress(),
         await token.balanceOf(await accounts[5].getAddress())
       );
-    console.log(
-      (await token.balanceOf(await accounts[5].getAddress())).toString()
-    );
-    console.log(
-      (await token.balanceOf(await accounts[11].getAddress())).toString()
-    );
-    console.log((await token.totalSupply()).toString());
-    console.log(await accounts[5].getAddress());
+    expect(await token.balanceOf(await accounts[5].getAddress())).to.eq(parseEther('0'));
+    expect(await token.balanceOf(await accounts[11].getAddress())).to.eq(parseEther('138240'));
+  });
+
+  it("should lose eligibility to lottery with user5", async () => {
     expect(await getAccountEligibility(accounts[5])).to.be.false;
   });
 
+  it("should return the new balance (979 030 BURND) after tokens has been burnt", async() => {
+    expect(await token.totalSupply()).to.equal(parseEther('979030'));
+  });
+
+  it("should be eligible to lottery with user3", async () => {
+    expect(await getAccountEligibility(accounts[3])).to.be.true;
+  });
+
   it("should transfer from user3 to user11", async () => {
-    console.log(await getAccountEligibility(accounts[3]));
 
     await token
       .connect(accounts[3])
@@ -337,19 +345,19 @@ describe("BurnD", () => {
         await accounts[11].getAddress(),
         await token.balanceOf(await accounts[3].getAddress())
       );
-    console.log(
-      (await token.balanceOf(await accounts[3].getAddress())).toString()
-    );
-    console.log(
-      (await token.balanceOf(await accounts[11].getAddress())).toString()
-    );
-    console.log((await token.totalSupply()).toString());
-    console.log(await accounts[3].getAddress());
-    console.log(await getAccountEligibility(accounts[3]));
+    expect(await token.balanceOf(await accounts[3].getAddress())).to.eq(parseEther('0'));
+    expect(await token.balanceOf(await accounts[11].getAddress())).to.eq(parseEther('165888'));
+  });
+
+  it("should lose eligibility to lottery with user3", async () => {
+    expect(await getAccountEligibility(accounts[3])).to.be.false;
+  });
+
+  it("should be eligible to lottery with user2", async () => {
+    expect(await getAccountEligibility(accounts[2])).to.be.true;
   });
 
   it("should transfer from user2 to user11", async () => {
-    console.log(await getAccountEligibility(accounts[2]));
 
     await token
       .connect(accounts[2])
@@ -357,35 +365,21 @@ describe("BurnD", () => {
         await accounts[11].getAddress(),
         await token.balanceOf(await accounts[2].getAddress())
       );
-    console.log(
-      (await token.balanceOf(await accounts[2].getAddress())).toString()
-    );
-    console.log(
-      (await token.balanceOf(await accounts[11].getAddress())).toString()
-    );
-    console.log((await token.totalSupply()).toString());
-    console.log(await accounts[2].getAddress());
-    console.log(await getAccountEligibility(accounts[2]));
+    expect(await token.balanceOf(await accounts[2].getAddress())).to.eq(parseEther('0'));
+    expect(await token.balanceOf(await accounts[11].getAddress())).to.eq(parseEther('184320'));
   });
 
-  it("should transfer from user6 to user11", async () => {
-    console.log(await getAccountEligibility(accounts[6]));
+  it("should lose eligibility to lottery with user2", async () => {
+    expect(await getAccountEligibility(accounts[2])).to.be.false;
+  });
 
-    await token
-      .connect(accounts[6])
-      .transfer(
-        await accounts[11].getAddress(),
-        await token.balanceOf(await accounts[6].getAddress())
-      );
-    console.log(
-      (await token.balanceOf(await accounts[6].getAddress())).toString()
-    );
-    console.log(
-      (await token.balanceOf(await accounts[11].getAddress())).toString()
-    );
-    console.log((await token.totalSupply()).toString());
-    console.log(await accounts[6].getAddress());
-    console.log(await getAccountEligibility(accounts[6]));
+  it("should return winners", async () => {
+
+    const winners = (await lottery.getWinners());
+
+    expect(isAddress(winners[0])).to.be.true;
+    expect(winners.length).to.equal(1);
+
   });
 
   // it("Should fail to remove account from Lottery if not called by BurnD Contract", async () => {

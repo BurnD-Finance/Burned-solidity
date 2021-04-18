@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-
 interface ILottery {
     function addToLottery(address account) external;
 
@@ -10,6 +9,8 @@ interface ILottery {
     function setMaxPrizePool(uint256 _maxPrizePool) external;
 
     function lottery() external;
+
+    function setNewRandomizeContract(address _randomizeContract) external;
 
     function isEligible(address account) external view returns (bool);
 
@@ -35,4 +36,12 @@ interface ILottery {
      * from the list of players eligible for the lottery
      */
     event RemoveFromLottery(address indexed account);
+
+    /**
+     * @dev Emitted when `RandomizeContract` is updated
+     */
+    event UpdateRandomizeContract(
+        address indexed oldContract,
+        address indexed newContract
+    );
 }
