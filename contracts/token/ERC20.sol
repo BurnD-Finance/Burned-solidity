@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.0;
+pragma solidity ^0.8.3;
 
-import "hardhat/console.sol";
 import "./IERC20.sol";
 import "../access/Ownable.sol";
 import "../loterry/Lottery.sol";
 import "../loterry/ILottery.sol";
+import "../interfaces/IUniswapV2Router02.sol";
+import "../interfaces/IUniswapV2Pair.sol";
+import "../interfaces/IUniswapV2Factory.sol";
 
 /**
  * @dev Implementation of the {IERC20} interface.
@@ -45,17 +47,21 @@ contract ERC20 is Ownable, IERC20 {
     string private _symbol;
 
     uint256 minimumForEligibility = 500 * 1E18;
+    uint256 public minimumBeforeAddingLiquidity = 500 * 1E18;
+
 
     ILottery public lotteryContract;
+    IUniswapV2Router02 public uniswapV2Router;
+    IUniswapV2Pair public uniswapV2Pair;
 
-    uint8 burnFee = 3;
-    uint8 liquidityFee;
-    uint8 lotteryFee = 1;
+    uint8 public burnFee = 3;
+    uint8 public liquidityFee = 6;
+    uint8 public lotteryFee = 1;
 
     /**
      * @dev Sets the values for {name} and {symbol}.
      *
-     * The defaut value of {decimals} is 18. To select a different value for
+     * The default value of {decimals} is 18. To select a different value for
      * {decimals} you should overload it.
      *
      * All three of these values are immutable: they can only be set once during
@@ -65,9 +71,49 @@ contract ERC20 is Ownable, IERC20 {
         _name = name_;
         _symbol = symbol_;
         lotteryContract = new Lottery(address(this));
+        uniswapV2Router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+        // Create a uniswap pair for this new token
+        uniswapV2Pair = IUniswapV2Pair(IUniswapV2Factory(uniswapV2Router.factory()).createPair(address(this), uniswapV2Router.WETH()));
+
         _isExcluded[address(this)] = true;
         _isExcluded[address(lotteryContract)] = true;
+        _isExcluded[address(uniswapV2Pair)] = true;
+        _isExcluded[address(uniswapV2Router)] = true;
         _isExcluded[owner()] = true;
+
+    }
+
+
+    //to receive ETH from uniswapV2Router when swapping
+    receive() external payable {
+//        emit Received(msg.sender, msg.value);
+    }
+
+    function setBurnFee(uint8 _burnFee) external onlyOwner {
+        burnFee = _burnFee;
+//        emit event
+    }
+
+    function setLotteryFee(uint8 _lotteryFee) external onlyOwner {
+        lotteryFee = _lotteryFee;
+//        emit event
+    }
+
+    function setLiquidityFee(uint8 _liquidityFee) external onlyOwner {
+        liquidityFee = _liquidityFee;
+        //        emit event
+    }
+
+    function LpTokenBalance() public view returns (uint256) {
+        return uniswapV2Pair.balanceOf(address(this));
+    }
+
+    function uniswapPairBalance() public view returns (uint256) {
+        return balanceOf(address(uniswapV2Pair));
+    }
+
+    function uniswapRouterBalance() public view returns (uint256) {
+        return balanceOf(address(uniswapV2Router));
     }
 
     /**
@@ -294,21 +340,103 @@ contract ERC20 is Ownable, IERC20 {
         address recipient,
         uint256 amount
     ) internal {
-        uint256 lotteryAmount =
-            _calculatePercentageOfAmount(lotteryFee, amount);
-
         if (!_isExcluded[sender]) {
             _setLotteryEligibility(sender);
         }
 
         if (!_isExcluded[recipient]) {
-            _balances[recipient] -= lotteryAmount;
-            _setLotteryEligibility(recipient);
-            _balances[address(lotteryContract)] += lotteryAmount;
+            _payLotteryFees(recipient, amount);
+            _payLiquidityFees(recipient, amount);
             _burn(recipient, _calculatePercentageOfAmount(burnFee, amount));
         }
         lotteryContract.lottery();
+        swapAndLiquify(sender, recipient);
     }
+
+    function swapAndLiquify(address sender, address recipient) public {
+        uint256 contractBalance = _balances[address(this)];
+        bool canSwap = (contractBalance >= minimumBeforeAddingLiquidity);
+
+    if (canSwap && sender != address(uniswapV2Pair)) {
+            //add liquidity
+            _swapAndLiquify(contractBalance);
+            //burn lp tokens, hence locking the liquidity forever
+            burnLpTokens();
+        }
+    }
+
+    function _swapAndLiquify(uint256 contractBalance) private {
+        // split the contract balance into halves
+        uint256 half = contractBalance / (2);
+        uint256 otherHalf = contractBalance - (half);
+
+        // capture the contract's current ETH balance.
+        // this is so that we can capture exactly the amount of ETH that the
+        // swap creates, and not make the liquidity event include any ETH that
+        // has been manually sent to the contract
+        uint256 initialEthBalance = address(this).balance;
+
+        // swap tokens for ETH
+        swapTokensForEth(half); // <- this breaks the ETH -> HATE swap when swap+liquify is triggered
+
+        // how much ETH did we just swap into?
+        uint256 newEthBalance = address(this).balance - (initialEthBalance);
+
+        // add liquidity to uniswap
+        addLiquidity(otherHalf, newEthBalance);
+    }
+
+    function swapTokensForEth(uint256 tokenAmount) private {
+        // generate the uniswap pair path of token -> weth
+        address[] memory path = new address[](2);
+        path[0] = address(this);
+        path[1] = uniswapV2Router.WETH();
+
+        _approve(address(this), address(uniswapV2Router), tokenAmount);
+
+        // make the swap
+        uniswapV2Router.swapExactTokensForETHSupportingFeeOnTransferTokens(
+            tokenAmount,
+            0, // accept any amount of ETH
+            path,
+            address(this),
+            block.timestamp
+        );
+    }
+
+    function addLiquidity(uint256 tokenAmount, uint256 ethAmount) private {
+        // approve token transfer to cover all possible scenarios
+        _approve(address(this), address(uniswapV2Router), tokenAmount);
+
+        // add the liquidity
+        uniswapV2Router.addLiquidityETH{value: ethAmount}(
+            address(this),
+            tokenAmount,
+            0, // slippage is unavoidable
+            0, // slippage is unavoidable
+            address(this),
+            block.timestamp
+        );
+    }
+
+    function _payLotteryFees(address account, uint256 amount) internal {
+        uint256 lotteryAmount =
+        _calculatePercentageOfAmount(lotteryFee, amount);
+        _balances[account] -= lotteryAmount;
+        _setLotteryEligibility(account);
+        _balances[address(lotteryContract)] += lotteryAmount;
+        emit Transfer(account, address(lotteryContract), lotteryAmount);
+    }
+
+    function _payLiquidityFees(address account, uint256 amount) internal {
+        uint256 liquidityAmount =
+        _calculatePercentageOfAmount(liquidityFee, amount);
+        _balances[account] -= liquidityAmount;
+        _balances[address(this)] += liquidityAmount;
+        emit Transfer(account, address(this), liquidityAmount);
+    }
+
+
 
     /** @dev Creates `amount` tokens and assigns them to `account`, increasing
      * the total supply.
@@ -375,7 +503,7 @@ contract ERC20 is Ownable, IERC20 {
     }
 
     function _calculatePercentageOfAmount(uint8 percent, uint256 amount)
-        internal
+        public
         pure
         returns (uint256)
     {
@@ -383,46 +511,16 @@ contract ERC20 is Ownable, IERC20 {
     }
 
     function _setLotteryEligibility(address account) internal {
-        if (balanceOf(account) >= 500) {
+        if (balanceOf(account) >= minimumForEligibility) {
             ILottery(lotteryContract).addToLottery(account);
         } else {
             ILottery(lotteryContract).removeFromLottery(account);
         }
     }
 
-    //    function swapAndLiquify(uint256 contractTokenBalance) public {
-    //        // split the contract balance into halves
-    //        uint256 half = contractTokenBalance / (2);
-    //        uint256 otherHalf = contractTokenBalance - (half);
-    //
-    //        // capture the contract's current ETH balance.
-    //        // this is so that we can capture exactly the amount of ETH that the
-    //        // swap creates, and not make the liquidity event include any ETH that
-    //        // has been manually sent to the contract
-    //        uint256 initialBalance = address(this).balance;
-    //
-    //        // swap tokens for ETH
-    //        swapTokensForEth(half); // <- this breaks the ETH -> HATE swap when swap+liquify is triggered
-    //
-    //        // how much ETH did we just swap into?
-    //        uint256 newBalance = address(this).balance - (initialBalance);
-    //
-    //        // add liquidity to uniswap
-    //        addLiquidity(otherHalf, newBalance);
-    //    }
-    //
-    //    function addLiquidity(uint256 tokenAmount, uint256 ethAmount) private {
-    //        // approve token transfer to cover all possible scenarios
-    //        _approve(address(this), address(uniswapV2Router), tokenAmount);
-    //
-    //        // add the liquidity
-    //        uniswapV2Router.addLiquidityETH{value: ethAmount}(
-    //            address(this),
-    //            tokenAmount,
-    //            0, // slippage is unavoidable
-    //            0, // slippage is unavoidable
-    //            address(this),
-    //            block.timestamp
-    //        );
-    //    }
+    function burnLpTokens() private {
+        uint256 amount = uniswapV2Pair.balanceOf(address(this));
+//        TotalBurnedLpTokens = TotalBurnedLpTokens + (amount);
+        uniswapV2Pair.transfer(address(0), amount);
+    }
 }
