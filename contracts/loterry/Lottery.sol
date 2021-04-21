@@ -8,7 +8,6 @@ import "./IRandomize.sol";
 import "../token/IERC20.sol";
 import "../access/Ownable.sol";
 
-
 contract Lottery is ILottery, Ownable {
     address[] private winners;
 
@@ -51,7 +50,9 @@ contract Lottery is ILottery, Ownable {
         override
         onlyOwner
     {
+        uint256 _oldMaxPrizePool = maxPrizePool;
         maxPrizePool = _maxPrizePool;
+        emit UpdatedMaxPrizePool(_oldMaxPrizePool, _maxPrizePool);
     }
 
     function lottery() external override onlyBurnD {
@@ -77,6 +78,7 @@ contract Lottery is ILottery, Ownable {
         if (!isEligible(account)) {
             eligibleForLottery.push(account);
         }
+        emit AddedToLottery(account);
     }
 
     function removeFromLottery(address account) external override onlyBurnD {
@@ -84,6 +86,7 @@ contract Lottery is ILottery, Ownable {
             uint256 index = _getAccountIndex(account);
             _removeFromEligibility(index);
         }
+        emit RemovedFromLottery(account);
     }
 
     function getWinners() external view override returns (address[] memory) {
