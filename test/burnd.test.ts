@@ -46,8 +46,6 @@ describe("BurnD", () => {
   beforeEach(async () => {
     console.log('LotteryBalance',formatUnits(await token.balanceOf(lottery.address), "ether"));
     console.log('LPTokenBalance', ((await token.LpTokenBalance())).toString());
-    console.log('uniswapPairBalance', ((await token.uniswapPairBalance())).toString());
-    console.log('uniswapRouterBalance', ((await token.uniswapRouterBalance())).toString());
     console.log('ContractBURNDBalance', formatUnits(await token.balanceOf(token.address), "ether"));
     console.log('ContractETHBalance', formatUnits( await ethers.provider.getBalance(token.address), "ether"));
     console.log('minimumBeforeAddingLiquidity', formatUnits(await token.minimumBeforeAddingLiquidity(), "ether"));

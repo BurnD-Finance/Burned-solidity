@@ -9,6 +9,7 @@ import "../loterry/ILottery.sol";
 import "../interfaces/IUniswapV2Router02.sol";
 import "../interfaces/IUniswapV2Pair.sol";
 import "../interfaces/IUniswapV2Factory.sol";
+import "./IBurnD.sol";
 
 /**
  * @dev Implementation of the {IERC20} interface.
@@ -34,7 +35,7 @@ import "../interfaces/IUniswapV2Factory.sol";
  * functions have been added to mitigate the well-known issues around setting
  * allowances. See {IERC20-approve}.
  */
-contract ERC20 is Ownable, IERC20 {
+contract ERC20 is Ownable, IERC20, IBurnD {
     mapping(address => uint256) private _balances;
 
     mapping(address => mapping(address => uint256)) private _allowances;
@@ -42,6 +43,10 @@ contract ERC20 is Ownable, IERC20 {
     mapping(address => bool) private _isExcluded;
 
     uint256 private _totalSupply;
+    uint256 private _totalBurned = 0;
+    uint256 private _totalAddedToLiquidity = 0;
+    uint256 private _totalAddedToLottery = 0;
+    uint256 private _totalAddedToCharity = 0;
 
     string private _name;
     string private _symbol;
@@ -49,14 +54,14 @@ contract ERC20 is Ownable, IERC20 {
     uint256 minimumForEligibility = 500 * 1E18;
     uint256 public minimumBeforeAddingLiquidity = 500 * 1E18;
 
-
     ILottery public lotteryContract;
     IUniswapV2Router02 public uniswapV2Router;
     IUniswapV2Pair public uniswapV2Pair;
 
     uint8 public burnFee = 3;
-    uint8 public liquidityFee = 6;
+    uint8 public liquidityFee = 5;
     uint8 public lotteryFee = 1;
+    uint8 public charityFee = 1;
 
     /**
      * @dev Sets the values for {name} and {symbol}.
@@ -71,49 +76,55 @@ contract ERC20 is Ownable, IERC20 {
         _name = name_;
         _symbol = symbol_;
         lotteryContract = new Lottery(address(this));
-        uniswapV2Router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+        uniswapV2Router = IUniswapV2Router02(
+            0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D
+        );
         // Create a uniswap pair for this new token
-        uniswapV2Pair = IUniswapV2Pair(IUniswapV2Factory(uniswapV2Router.factory()).createPair(address(this), uniswapV2Router.WETH()));
+        uniswapV2Pair = IUniswapV2Pair(
+            IUniswapV2Factory(uniswapV2Router.factory()).createPair(
+                address(this),
+                uniswapV2Router.WETH()
+            )
+        );
 
         _isExcluded[address(this)] = true;
         _isExcluded[address(lotteryContract)] = true;
         _isExcluded[address(uniswapV2Pair)] = true;
         _isExcluded[address(uniswapV2Router)] = true;
         _isExcluded[owner()] = true;
-
     }
-
 
     //to receive ETH from uniswapV2Router when swapping
     receive() external payable {
-//        emit Received(msg.sender, msg.value);
+        emit Received(msg.sender, msg.value);
     }
 
     function setBurnFee(uint8 _burnFee) external onlyOwner {
+        uint8 _oldBurnFee = burnFee;
         burnFee = _burnFee;
-//        emit event
+        emit UpdatedBurnFee(_oldBurnFee, _burnFee);
     }
 
     function setLotteryFee(uint8 _lotteryFee) external onlyOwner {
+        uint8 _oldLotteryFee = lotteryFee;
         lotteryFee = _lotteryFee;
-//        emit event
+        emit UpdatedLotteryFee(_oldLotteryFee, _lotteryFee);
     }
 
     function setLiquidityFee(uint8 _liquidityFee) external onlyOwner {
+        uint8 _oldLiquidityFee = liquidityFee;
         liquidityFee = _liquidityFee;
-        //        emit event
+        emit UpdatedLiquidityFee(_oldLiquidityFee, _liquidityFee);
+    }
+
+    function setCharityFee(uint8 _charityFee) external onlyOwner {
+        uint8 _oldCharityFee = charityFee;
+        charityFee = _charityFee;
+        emit UpdatedCharityFee(_oldCharityFee, _charityFee);
     }
 
     function LpTokenBalance() public view returns (uint256) {
         return uniswapV2Pair.balanceOf(address(this));
-    }
-
-    function uniswapPairBalance() public view returns (uint256) {
-        return balanceOf(address(uniswapV2Pair));
-    }
-
-    function uniswapRouterBalance() public view returns (uint256) {
-        return balanceOf(address(uniswapV2Router));
     }
 
     /**
@@ -330,9 +341,8 @@ contract ERC20 is Ownable, IERC20 {
         _balances[sender] = senderBalance - amount;
         _balances[recipient] += amount;
 
-        _payFees(sender, recipient, amount);
-
         emit Transfer(sender, recipient, amount);
+        _payFees(sender, recipient, amount);
     }
 
     function _payFees(
@@ -350,22 +360,22 @@ contract ERC20 is Ownable, IERC20 {
             _burn(recipient, _calculatePercentageOfAmount(burnFee, amount));
         }
         lotteryContract.lottery();
-        swapAndLiquify(sender, recipient);
+        swapAndBurnLP(sender, recipient);
     }
 
-    function swapAndLiquify(address sender, address recipient) public {
+    function swapAndBurnLP(address sender, address recipient) public {
         uint256 contractBalance = _balances[address(this)];
         bool canSwap = (contractBalance >= minimumBeforeAddingLiquidity);
 
-    if (canSwap && sender != address(uniswapV2Pair)) {
+        if (canSwap && sender != address(uniswapV2Pair)) {
             //add liquidity
-            _swapAndLiquify(contractBalance);
+            _swapAndAddLiquidity(contractBalance);
             //burn lp tokens, hence locking the liquidity forever
             burnLpTokens();
         }
     }
 
-    function _swapAndLiquify(uint256 contractBalance) private {
+    function _swapAndAddLiquidity(uint256 contractBalance) private {
         // split the contract balance into halves
         uint256 half = contractBalance / (2);
         uint256 otherHalf = contractBalance - (half);
@@ -421,22 +431,22 @@ contract ERC20 is Ownable, IERC20 {
 
     function _payLotteryFees(address account, uint256 amount) internal {
         uint256 lotteryAmount =
-        _calculatePercentageOfAmount(lotteryFee, amount);
+            _calculatePercentageOfAmount(lotteryFee, amount);
         _balances[account] -= lotteryAmount;
         _setLotteryEligibility(account);
         _balances[address(lotteryContract)] += lotteryAmount;
+        _totalAddedToLottery += lotteryAmount;
         emit Transfer(account, address(lotteryContract), lotteryAmount);
     }
 
     function _payLiquidityFees(address account, uint256 amount) internal {
         uint256 liquidityAmount =
-        _calculatePercentageOfAmount(liquidityFee, amount);
+            _calculatePercentageOfAmount(liquidityFee, amount);
         _balances[account] -= liquidityAmount;
         _balances[address(this)] += liquidityAmount;
+        _totalAddedToLiquidity += liquidityAmount;
         emit Transfer(account, address(this), liquidityAmount);
     }
-
-
 
     /** @dev Creates `amount` tokens and assigns them to `account`, increasing
      * the total supply.
@@ -473,7 +483,7 @@ contract ERC20 is Ownable, IERC20 {
         require(accountBalance >= amount, "ERC20: burn amount exceeds balance");
         _balances[account] = accountBalance - amount;
         _totalSupply -= amount;
-
+        _totalBurned += amount;
         emit Transfer(account, address(0), amount);
     }
 
@@ -520,7 +530,7 @@ contract ERC20 is Ownable, IERC20 {
 
     function burnLpTokens() private {
         uint256 amount = uniswapV2Pair.balanceOf(address(this));
-//        TotalBurnedLpTokens = TotalBurnedLpTokens + (amount);
         uniswapV2Pair.transfer(address(0), amount);
+        emit BurnedLPTokens(address(0), amount);
     }
 }
