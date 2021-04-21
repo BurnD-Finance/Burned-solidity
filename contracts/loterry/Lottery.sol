@@ -2,12 +2,12 @@
 
 pragma solidity ^0.8.3;
 
-import "hardhat/console.sol";
 import "./Randomize.sol";
 import "./ILottery.sol";
 import "./IRandomize.sol";
 import "../token/IERC20.sol";
 import "../access/Ownable.sol";
+
 
 contract Lottery is ILottery, Ownable {
     address[] private winners;
@@ -29,7 +29,7 @@ contract Lottery is ILottery, Ownable {
 
     constructor(address BurnDContract_) {
         BurnDContract = BurnDContract_;
-        maxPrizePool = 5000 * 1E18;
+        maxPrizePool = 500 * 1E18;
         randomizeContract = new Randomize();
     }
 
